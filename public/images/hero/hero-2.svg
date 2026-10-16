@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" role="img" aria-label="Shopping bags">
+  <ellipse cx="640" cy="540" rx="440" ry="30" fill="#EC4899" opacity=".14"/>
+  <g>
+    <path d="M300 250h260l24 270H276z" fill="#EC4899"/>
+    <path d="M360 250v-40a70 70 0 0 1 140 0v40" fill="none" stroke="#9D174D" stroke-width="22" stroke-linecap="round"/>
+    <path d="M370 360c20 36 100 36 120 0" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round"/>
+  </g>
+  <g>
+    <path d="M560 200h300l26 320H534z" fill="#4F46E5"/>
+    <path d="M630 200v-46a80 80 0 0 1 160 0v46" fill="none" stroke="#312E81" stroke-width="22" stroke-linecap="round"/>
+    <circle cx="710" cy="340" r="52" fill="#FDE047"/>
+    <path d="M690 340l15 16 28-34" fill="none" stroke="#4F46E5" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g>
+    <path d="M830 290h230l20 230H810z" fill="#10B981"/>
+    <path d="M885 290v-30a60 60 0 0 1 120 0v30" fill="none" stroke="#065F46" stroke-width="20" stroke-linecap="round"/>
+    <path d="M880 400c18 30 80 30 98 0" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  </g>
+</svg>

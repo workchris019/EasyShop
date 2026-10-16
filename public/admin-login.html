@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Sign in | ShopEasy Admin</title>
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body data-page="login">
+  <div class="login-page">
+    <form class="login-card" id="loginForm" novalidate>
+      <div class="brand" id="loginBrand"></div>
+      <h1>Sign in to the admin panel</h1>
+      <div id="loginError" class="error" role="alert" hidden></div>
+      <div class="field"><label for="u">Username</label><input id="u" autocomplete="username" required></div>
+      <div class="field"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password" required></div>
+      <button class="btn block" type="submit" id="loginBtn">Sign in</button>
+    </form>
+  </div>
+  <script src="/js/admin-common.js"></script>
+  <script src="/js/admin-login.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" role="img" aria-label="Gift box with a sale tag">
+  <ellipse cx="640" cy="540" rx="400" ry="30" fill="#F59E0B" opacity=".16"/>
+  <rect x="380" y="270" width="440" height="250" rx="22" fill="#4F46E5"/>
+  <rect x="350" y="220" width="500" height="80" rx="20" fill="#6366F1"/>
+  <rect x="570" y="220" width="60" height="300" fill="#FDE047"/>
+  <path d="M600 220c-60-90-170-100-170-40 0 50 110 40 170 40zM600 220c60-90 170-100 170-40 0 50-110 40-170 40z" fill="#FDE047"/>
+  <g transform="rotate(-12 930 250)">
+    <path d="M860 170h200l32 80-32 80H860l-32-80z" fill="#EF4444"/>
+    <circle cx="866" cy="250" r="10" fill="#FFFFFF"/>
+    <text x="960" y="268" font-family="Segoe UI, Arial, sans-serif" font-size="58" font-weight="800" fill="#FFFFFF" text-anchor="middle">SALE</text>
+  </g>
+  <circle cx="250" cy="200" r="16" fill="#F472B6"/><circle cx="1080" cy="430" r="12" fill="#34D399"/><circle cx="300" cy="450" r="10" fill="#FBBF24"/>
+</svg>
