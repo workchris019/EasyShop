@@ -7,6 +7,7 @@ const cfg = require('../config');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const Hero = require('../models/Hero');
+const { getCategories, categoryKeys } = require('../utils/categories');
 const { getSettings } = require('../utils/settings');
 const { shapeProduct } = require('../utils/shape');
 const { rx } = require('../utils/text');
@@ -20,11 +21,14 @@ const limiter = (max, windowMs, message) =>
 /* ---------- Shop settings (safe to expose) ---------- */
 router.get('/config', wrap(async (req, res) => {
   const s = await getSettings();
+  const cats = await getCategories();
   res.json({
     shopName: s.shopName, tagline: s.tagline, about: s.about, announcement: s.announcement,
     address: s.address, email: s.email, phone: s.phone, whatsapp: s.whatsapp,
     freeDeliveryOver: s.freeDeliveryOver,
-    categories: cfg.categories, conditions: cfg.conditions, orderStatuses: cfg.orderStatuses,
+    categories: cats.map((c) => c.key),
+    categoryList: cats.map((c) => ({ key: c.key, label: c.label, icon: c.icon, image: c.image })),
+    conditions: cfg.conditions, orderStatuses: cfg.orderStatuses,
     kigali: cfg.kigaliDistricts, upcountry: cfg.upcountryDistricts,
     fees: { kigali: s.feeKigali, upcountry: s.feeUpcountry },
     payments: {
@@ -65,7 +69,7 @@ router.get('/products', wrap(async (req, res) => {
   }
 
   const filter = {};
-  if (typeof q.category === 'string' && cfg.categories.includes(q.category)) filter.category = q.category;
+  if (typeof q.category === 'string' && (await categoryKeys()).includes(q.category)) filter.category = q.category;
   if (typeof q.condition === 'string' && cfg.conditions.includes(q.condition)) filter.condition = q.condition;
   if (q.deals === '1') filter.discount = { $gt: 0 };
   if (q.featured === '1') filter.featured = true;

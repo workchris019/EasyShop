@@ -6,7 +6,7 @@ Shop.ready.then((cfg) => {
   if (!o) { location.replace('/index.html'); return; }
   Shop.setTitle(t('done_title'));
 
-  const payName = { mtn: 'MTN MoMo', airtel: 'Airtel Money', cod: 'Pay on delivery' }[o.payment.method];
+  const payName = { mtn: 'MTN MoMo', airtel: 'Airtel Money', cod: 'Pay on delivery', online: 'Online payment' }[o.payment.method];
   const lines = [
     cfg.shopName + ' order ' + o.ref,
     ...o.items.map((i) => i.qty + ' x ' + i.name + ' - ' + rwf(i.price * i.qty)),
@@ -19,7 +19,7 @@ Shop.ready.then((cfg) => {
   ];
 
   let pay = '';
-  if (o.payment.method !== 'cod') {
+  if (o.payment.method === 'mtn' || o.payment.method === 'airtel') {
     const info = cfg.payments[o.payment.method];
     pay = '<div class="pay-box">' + esc(info.code ? t('pay_to', { total: rwf(o.total), name: info.name || payName, code: info.code }) : t('pay_later')) + '</div>';
   }

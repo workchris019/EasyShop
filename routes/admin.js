@@ -11,12 +11,16 @@ const Admin = require('../models/Admin');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const Hero = require('../models/Hero');
+const Category = require('../models/Category');
+const Conversation = require('../models/Conversation');
+const Announcement = require('../models/Announcement');
+const { getCategories, clearCategories, categoryKeys } = require('../utils/categories');
 const { getSettings, saveSettings } = require('../utils/settings');
 const { rx } = require('../utils/text');
 const { normalizePhone } = require('../utils/phone');
 const { wrap, httpError } = require('../utils/http');
 const { requireAdmin } = require('../middleware/auth');
-const { upload, saveImages, removeImages } = require('../middleware/upload');
+const { upload, saveImages, saveVideo, removeImages } = require('../middleware/upload');
 
 const router = express.Router();
 const DAY = 24 * 60 * 60 * 1000;
@@ -100,7 +104,7 @@ router.get('/stats', wrap(async (req, res) => {
   const notCancelled = { status: { $ne: 'cancelled' } };
 
   const [products, productsWeek, lowStock, outOfStock, orders, ordersWeek, ordersPrev, newOrders, shipped,
-    customerPhones, customersWeek, customersPrev, daily, top, revenueRows, activeDeliveries] = await Promise.all([
+    customerPhones, customersWeek, customersPrev, daily, top, revenueRows, activeDeliveries, unreadSupport] = await Promise.all([
     Product.countDocuments(),
     Product.countDocuments({ createdAt: { $gte: weekAgo } }),
     Product.countDocuments({ stock: { $gt: 0, $lte: 3 } }),
@@ -117,6 +121,7 @@ router.get('/stats', wrap(async (req, res) => {
     Order.find(notCancelled).sort({ createdAt: -1 }).limit(1000).select('items').lean(),
     Order.aggregate([{ $match: notCancelled }, { $group: { _id: null, total: { $sum: '$total' } } }]),
     Order.countDocuments({ deliveryMethod: 'delivery', status: { $in: ['new', 'confirmed', 'shipped'] } }),
+    Conversation.countDocuments({ unreadAdmin: { $gt: 0 } }),
   ]);
 
   // Last 7 days in Kigali time, oldest first, with zeros filled in.
@@ -138,7 +143,7 @@ router.get('/stats', wrap(async (req, res) => {
   }
 
   res.json({
-    products, productsWeek, lowStock, outOfStock,
+    products, productsWeek, lowStock, outOfStock, unreadSupport,
     orders, ordersWeek, ordersChange: pct(ordersWeek, ordersPrev), newOrders, shipped, activeDeliveries,
     customers: customerPhones.length, customersWeek, customersChange: pct(customersWeek, customersPrev),
     revenue: revenueRows[0] ? revenueRows[0].total : 0,
@@ -147,7 +152,7 @@ router.get('/stats', wrap(async (req, res) => {
 }));
 
 /* ---------- Products ---------- */
-function parseProduct(b, partial = false) {
+async function parseProduct(b, partial = false) {
   const out = {};
   const has = (k) => b[k] !== undefined;
 
@@ -156,7 +161,7 @@ function parseProduct(b, partial = false) {
     if (out.name.length < 2) throw httpError(400, 'Enter the product name.');
   }
   if (!partial || has('category')) {
-    if (!cfg.categories.includes(b.category)) throw httpError(400, 'Choose a category.');
+    if (!(await categoryKeys()).includes(b.category)) throw httpError(400, 'Choose a category.');
     out.category = b.category;
   }
   if (!partial || has('condition')) {
@@ -178,6 +183,7 @@ function parseProduct(b, partial = false) {
     if (!Number.isInteger(n) || n < 0) throw httpError(400, 'Stock must be a whole number (0 or more).');
     out.stock = n;
   }
+  if (has('summary')) out.summary = String(b.summary).trim().slice(0, 90);
   if (has('description')) out.description = String(b.description).trim().slice(0, 2000);
   if (has('featured')) out.featured = b.featured === true || b.featured === 'true' || b.featured === 'on';
   return out;
@@ -187,7 +193,7 @@ router.get('/products', wrap(async (req, res) => {
   const q = req.query;
   const filter = {};
   if (typeof q.q === 'string' && q.q.trim()) filter.name = rx(q.q);
-  if (cfg.categories.includes(q.category)) filter.category = q.category;
+  if (typeof q.category === 'string' && q.category && (await categoryKeys()).includes(q.category)) filter.category = q.category;
   if (cfg.conditions.includes(q.condition)) filter.condition = q.condition;
   if (q.stock === 'in') filter.stock = { $gt: 3 };
   if (q.stock === 'low') filter.stock = { $gt: 0, $lte: 3 };
@@ -208,63 +214,76 @@ router.get('/products/:id', wrap(async (req, res) => {
   res.json(p);
 }));
 
-router.post('/products', upload.array('images', 4), wrap(async (req, res) => {
-  const data = parseProduct(req.body || {});
-  const images = await saveImages(req.files || []);
+const productFiles = upload.fields([{ name: 'images', maxCount: 4 }, { name: 'video', maxCount: 1 }]);
+
+router.post('/products', productFiles, wrap(async (req, res) => {
+  const data = await parseProduct(req.body || {});
+  const files = req.files || {};
+  const images = await saveImages(files.images || []);
+  let video = '';
   try {
-    res.status(201).json(await Product.create({ ...data, images }));
+    video = await saveVideo((files.video || [])[0]);
+    res.status(201).json(await Product.create({ ...data, images, video }));
   } catch (err) {
-    await removeImages(images);
+    await removeImages([...images, video]);
     throw err;
   }
 }));
 
-// Edit a product. Works for quick edits (JSON) and for the full form (multipart with photos).
-router.patch('/products/:id', upload.array('images', 4), wrap(async (req, res) => {
+// Edit a product. Works for quick edits (JSON) and for the full form (multipart with photos and video).
+router.patch('/products/:id', productFiles, wrap(async (req, res) => {
   const doc = validId(req.params.id) && (await Product.findById(req.params.id));
   if (!doc) throw httpError(404, 'Product not found.');
   const body = req.body || {};
-  const changes = parseProduct(body, true);
+  const changes = await parseProduct(body, true);
+  const files = req.files || {};
 
   let remove = [];
   if (body.removeImages) { try { remove = JSON.parse(body.removeImages); } catch { remove = []; } }
   remove = Array.isArray(remove) ? remove.filter((u) => doc.images.includes(u)) : [];
   const keep = doc.images.filter((u) => !remove.includes(u));
-  const files = req.files || [];
-  if (keep.length + files.length > 4) throw httpError(400, 'A product can have up to 4 photos.');
+  const newPhotos = files.images || [];
+  if (keep.length + newPhotos.length > 4) throw httpError(400, 'A product can have up to 4 photos.');
 
-  const added = await saveImages(files);
-  doc.set({ ...changes, images: [...keep, ...added] });
+  const added = await saveImages(newPhotos);
+  const oldVideo = doc.video;
+  let video = oldVideo;
+  let newVideo = '';
   try {
+    newVideo = await saveVideo((files.video || [])[0]);
+    if (newVideo) video = newVideo;
+    else if (body.removeVideo === 'true') video = '';
+    doc.set({ ...changes, images: [...keep, ...added], video });
     await doc.save();
   } catch (err) {
-    await removeImages(added);
+    await removeImages([...added, newVideo]);
     throw err;
   }
   await removeImages(remove);
+  if (oldVideo && oldVideo !== video) await removeImages([oldVideo]);
   res.json(doc);
 }));
 
 router.delete('/products/:id', wrap(async (req, res) => {
   const p = validId(req.params.id) && (await Product.findByIdAndDelete(req.params.id));
   if (!p) throw httpError(404, 'Product not found.');
-  await removeImages(p.images);
+  await removeImages([...p.images, p.video]);
   res.json({ ok: true });
 }));
 
 router.post('/products/delete-many', wrap(async (req, res) => {
   const ids = (Array.isArray((req.body || {}).ids) ? req.body.ids : []).filter(validId).slice(0, 100);
   if (!ids.length) throw httpError(400, 'Choose at least one product.');
-  const found = await Product.find({ _id: { $in: ids } }).select('images').lean();
+  const found = await Product.find({ _id: { $in: ids } }).select('images video').lean();
   await Product.deleteMany({ _id: { $in: ids } });
-  for (const p of found) await removeImages(p.images);
+  for (const p of found) await removeImages([...p.images, p.video]);
   res.json({ ok: true, deleted: found.length });
 }));
 
 /* ---------- Hero banners ---------- */
 const okPath = (u) => /^\/(images|uploads)\/[A-Za-z0-9_\-./]+$/.test(u) && !u.includes('..');
 
-function parseHero(b, partial = false) {
+async function parseHero(b, partial = false) {
   const out = {};
   const has = (k) => b[k] !== undefined;
   if (!partial || has('title')) {
@@ -276,7 +295,7 @@ function parseHero(b, partial = false) {
   if (has('buttonText')) out.buttonText = String(b.buttonText).trim().slice(0, 30) || 'Shop Now';
   if (has('link')) {
     const l = String(b.link).trim().slice(0, 200) || 'all';
-    const ok = l === 'all' || l === 'deals' || (l.startsWith('cat:') && cfg.categories.includes(l.slice(4))) ||
+    const ok = l === 'all' || l === 'deals' || (l.startsWith('cat:') && (await categoryKeys()).includes(l.slice(4))) ||
       (l.startsWith('/') && !l.startsWith('//')) || /^https?:\/\//i.test(l);
     if (!ok) throw httpError(400, 'That button link is not valid.');
     out.link = l;
@@ -312,7 +331,7 @@ router.get('/hero', wrap(async (req, res) => {
 
 // Image: upload a file (field "image") OR give a path of a file you placed in public/images/ (field "imageUrl").
 router.post('/hero', upload.single('image'), wrap(async (req, res) => {
-  const data = parseHero(req.body || {}, false);
+  const data = await parseHero(req.body || {}, false);
   let image = '';
   let uploaded = [];
   if (req.file) { uploaded = await saveImages([req.file], { max: 1600, quality: 78 }); image = uploaded[0]; }
@@ -332,7 +351,7 @@ router.patch('/hero/:id', upload.single('image'), wrap(async (req, res) => {
   const doc = validId(req.params.id) && (await Hero.findById(req.params.id));
   if (!doc) throw httpError(404, 'Banner not found.');
   const body = req.body || {};
-  const changes = parseHero(body, true);
+  const changes = await parseHero(body, true);
 
   let newImage = '';
   let uploaded = [];
@@ -358,6 +377,143 @@ router.delete('/hero/:id', wrap(async (req, res) => {
   const h = validId(req.params.id) && (await Hero.findByIdAndDelete(req.params.id));
   if (!h) throw httpError(404, 'Banner not found.');
   await removeImages([h.image]);
+  res.json({ ok: true });
+}));
+
+/* ---------- Categories ---------- */
+const slug = (t) => String(t).toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+
+router.get('/categories', wrap(async (req, res) => {
+  const [cats, counts] = await Promise.all([getCategories(), Product.aggregate([{ $group: { _id: '$category', n: { $sum: 1 } } }])]);
+  const byKey = Object.fromEntries(counts.map((c) => [c._id, c.n]));
+  res.json(cats.map((c) => ({ ...c, products: byKey[c.key] || 0 })));
+}));
+
+function parseCategory(b, partial) {
+  const out = {};
+  if (!partial || b.label !== undefined) {
+    out.label = String(b.label || '').trim().slice(0, 30);
+    if (out.label.length < 2) throw httpError(400, 'Enter the category name.');
+  }
+  if (b.icon !== undefined) out.icon = String(b.icon).trim().slice(0, 8);
+  if (b.order !== undefined && b.order !== '') {
+    const n = Number(b.order);
+    if (!Number.isInteger(n) || n < 0 || n > 999) throw httpError(400, 'Position must be a whole number from 0 to 999.');
+    out.order = n;
+  }
+  return out;
+}
+
+router.post('/categories', upload.single('image'), wrap(async (req, res) => {
+  const data = parseCategory(req.body || {}, false);
+  let key = slug(data.label) || 'category';
+  const taken = new Set(await categoryKeys());
+  for (let i = 2; taken.has(key); i++) key = slug(data.label).slice(0, 26) + '-' + i;
+  const uploaded = req.file ? await saveImages([req.file], { max: 600, quality: 78 }) : [];
+  try {
+    const cat = await Category.create({ ...data, key, image: uploaded[0] || '', order: data.order !== undefined ? data.order : taken.size + 1 });
+    clearCategories();
+    res.status(201).json(cat);
+  } catch (err) { await removeImages(uploaded); throw err; }
+}));
+
+router.patch('/categories/:id', upload.single('image'), wrap(async (req, res) => {
+  const doc = validId(req.params.id) && (await Category.findById(req.params.id));
+  if (!doc) throw httpError(404, 'Category not found.');
+  const changes = parseCategory(req.body || {}, true);
+  const uploaded = req.file ? await saveImages([req.file], { max: 600, quality: 78 }) : [];
+  const old = doc.image;
+  doc.set(changes);
+  if (uploaded[0]) doc.image = uploaded[0];
+  else if ((req.body || {}).removeImage === 'true') doc.image = '';
+  try { await doc.save(); } catch (err) { await removeImages(uploaded); throw err; }
+  if (old !== doc.image) await removeImages([old]);
+  clearCategories();
+  res.json(doc);
+}));
+
+router.delete('/categories/:id', wrap(async (req, res) => {
+  const doc = validId(req.params.id) && (await Category.findById(req.params.id));
+  if (!doc) throw httpError(404, 'Category not found.');
+  const n = await Product.countDocuments({ category: doc.key });
+  if (n) throw httpError(400, 'This category still has ' + n + ' product' + (n === 1 ? '' : 's') + '. Move or delete them first.');
+  if ((await Category.countDocuments()) <= 1) throw httpError(400, 'Keep at least one category.');
+  await doc.deleteOne();
+  await removeImages([doc.image]);
+  clearCategories();
+  res.json({ ok: true });
+}));
+
+/* ---------- Support chat ---------- */
+router.get('/support', wrap(async (req, res) => {
+  const list = await Conversation.find().sort({ lastAt: -1 }).limit(200).select('cid name phone unreadAdmin lastAt messages').lean();
+  res.json(list.map((c) => {
+    const last = c.messages[c.messages.length - 1];
+    return { cid: c.cid, name: c.name, phone: c.phone, unread: c.unreadAdmin, lastAt: c.lastAt, last: last ? { from: last.from, text: last.text.slice(0, 80) } : null };
+  }));
+}));
+
+router.get('/support/:cid', wrap(async (req, res) => {
+  const c = await Conversation.findOneAndUpdate({ cid: String(req.params.cid) }, { $set: { unreadAdmin: 0 } }, { new: true }).lean();
+  if (!c) throw httpError(404, 'Chat not found.');
+  res.json({ cid: c.cid, name: c.name, phone: c.phone, messages: c.messages });
+}));
+
+router.post('/support/:cid/reply', wrap(async (req, res) => {
+  const text = String((req.body || {}).text || '').trim().slice(0, 1000);
+  if (!text) throw httpError(400, 'Write your reply first.');
+  const r = await Conversation.updateOne(
+    { cid: String(req.params.cid) },
+    { $set: { lastAt: new Date(), unreadAdmin: 0 }, $inc: { unreadCustomer: 1 }, $push: { messages: { $each: [{ from: 'admin', text, at: new Date() }], $slice: -300 } } }
+  );
+  if (!r.matchedCount) throw httpError(404, 'Chat not found.');
+  res.json({ ok: true });
+}));
+
+router.delete('/support/:cid', wrap(async (req, res) => {
+  const r = await Conversation.deleteOne({ cid: String(req.params.cid) });
+  if (!r.deletedCount) throw httpError(404, 'Chat not found.');
+  res.json({ ok: true });
+}));
+
+/* ---------- Announcements ---------- */
+router.get('/announcements', wrap(async (req, res) => {
+  res.json(await Announcement.find().sort({ createdAt: -1 }).limit(100).lean());
+}));
+
+router.post('/announcements', wrap(async (req, res) => {
+  const b = req.body || {};
+  const text = String(b.text || '').trim().slice(0, 300);
+  if (text.length < 3) throw httpError(400, 'Write the announcement.');
+  const target = { type: 'all', cid: '', phone: '', name: '' };
+  if (b.to === 'customer') {
+    target.type = 'customer';
+    if (b.cid) {
+      const c = await Conversation.findOne({ cid: String(b.cid) }).select('cid name phone').lean();
+      if (!c) throw httpError(400, 'That customer chat was not found.');
+      target.cid = c.cid; target.phone = c.phone || ''; target.name = c.name;
+    } else {
+      const phone = normalizePhone(b.phone);
+      if (!phone) throw httpError(400, 'Choose a customer, or enter a valid Rwandan phone number.');
+      target.phone = phone;
+      const c = await Conversation.findOne({ phone }).select('cid name').lean();
+      if (c) { target.cid = c.cid; target.name = c.name; }
+    }
+  }
+  res.status(201).json(await Announcement.create({ text, target }));
+}));
+
+router.patch('/announcements/:id', wrap(async (req, res) => {
+  const a = validId(req.params.id) && (await Announcement.findById(req.params.id));
+  if (!a) throw httpError(404, 'Announcement not found.');
+  if ((req.body || {}).active !== undefined) a.active = req.body.active === true || req.body.active === 'true';
+  await a.save();
+  res.json(a);
+}));
+
+router.delete('/announcements/:id', wrap(async (req, res) => {
+  const a = validId(req.params.id) && (await Announcement.findByIdAndDelete(req.params.id));
+  if (!a) throw httpError(404, 'Announcement not found.');
   res.json({ ok: true });
 }));
 

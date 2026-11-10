@@ -1,10 +1,10 @@
-// admin-hero.html: the homepage slideshow. Add, edit, reorder, hide, delete slides.
+// admin-hero.html: the banners shown in the Deals section of the home page. Add, edit, reorder, hide, delete.
 Admin.ready.then(async ({ view }) => {
   const { esc, icon, api, json, toast, $, $$, CAT } = Admin;
   let slides = [];
   let files = [];
 
-  view.innerHTML = '<div class="page-head"><div><h1>Hero banners</h1><p>The slideshow at the top of your home page. Each slide has a picture, a short text and a button.</p></div>' +
+  view.innerHTML = '<div class="page-head"><div><h1>Home banners</h1><p>These banners slide at the top of your home page. The picture takes the right 60% and fades into the background; your text sits on the left 40%. Use a 16:9 picture (for example 1600 × 900). The button always opens the Deals page.</p></div>' +
     '<button type="button" class="btn" id="add">' + icon('plus') + 'Add banner</button></div><div class="banners" id="list"><p class="empty">Loading...</p></div>';
 
   const linkLabel = (l) => (l === 'all' ? 'All products' : l === 'deals' ? 'Deals' : l.indexOf('cat:') === 0 ? 'Category: ' + (CAT[l.slice(4)] || l.slice(4)) : l);
@@ -13,11 +13,11 @@ Admin.ready.then(async ({ view }) => {
     try {
       slides = await api('/api/admin/hero');
       $('#list').innerHTML = slides.length ? slides.map((s) =>
-        '<article class="bn"><div class="bn-prev"><div class="tx">' + (s.badge ? '<span class="p">' + esc(s.badge) + '</span>' : '') + '<b>' + esc(s.title) + '</b><small>' + esc(s.subtitle) + '</small></div>' +
-        (s.image ? '<img src="' + esc(s.image) + '" alt="">' : '') + '</div>' +
+        '<article class="bn"><div class="bn-prev">' + (s.image ? '<img src="' + esc(s.image) + '" alt="">' : '<div class="noimg"></div>') +
+        '<div class="tx">' + (s.badge ? '<span class="p">' + esc(s.badge) + '</span>' : '') + '<b>' + esc(s.title) + '</b><small>' + esc(s.subtitle) + '</small></div></div>' +
         '<div class="bn-body"><div class="meta">Position ' + s.order + ' · Button: ' + esc(s.buttonText) + ' → ' + esc(linkLabel(s.link)) + '<br>' + (s.active ? '<span class="pill p-delivered">Showing</span>' : '<span class="pill p-cancelled">Hidden</span>') + '</div>' +
         '<div class="actions"><button type="button" class="btn sm ghost" data-edit="' + esc(s._id) + '">' + icon('edit') + 'Edit</button><button type="button" class="btn sm outline-danger" data-del="' + esc(s._id) + '">Delete</button></div></div></article>').join('')
-        : '<p class="empty">No banners yet. Add your first one: your home page shows a default message until then.</p>';
+        : '<p class="empty">No banners yet. Add your first one and it will show at the top of your home page.</p>';
     } catch (e) { $('#list').innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; }
   }
 
@@ -25,9 +25,12 @@ Admin.ready.then(async ({ view }) => {
     let imgFiles = [];
     try { imgFiles = await api('/api/admin/hero-files'); } catch (e) { imgFiles = []; }
     files = [];
-    let dlg = $('#heroDlg');
-    if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'heroDlg'; document.body.appendChild(dlg); }
-    const link = s ? s.link : 'all';
+    const old = $('#heroDlg');
+    if (old) old.remove();
+    const dlg = document.createElement('dialog');
+    dlg.id = 'heroDlg';
+    document.body.appendChild(dlg);
+    const link = s ? s.link : 'deals';
     const isCat = link.indexOf('cat:') === 0;
     const isCustom = !(link === 'all' || link === 'deals' || isCat);
     dlg.innerHTML = '<form class="dlg" id="hf" novalidate><div class="dlg-head"><h2>' + (s ? 'Edit banner' : 'Add banner') + '</h2><button type="button" class="icon-btn" data-x aria-label="Close">' + icon('x') + '</button></div>' +
@@ -37,11 +40,11 @@ Admin.ready.then(async ({ view }) => {
       '<div class="field"><label for="hTitle">Title *</label><input id="hTitle" maxlength="80" placeholder="Upgrade Your Lifestyle" value="' + esc(s ? s.title : '') + '"></div>' +
       '<div class="field"><label for="hSub">Description</label><textarea id="hSub" rows="2" maxlength="200" placeholder="Discover amazing products, fair prices, and delivery across Rwanda.">' + esc(s ? s.subtitle : '') + '</textarea></div>' +
       '<div class="row2"><div class="field"><label for="hBtn">Button text</label><input id="hBtn" maxlength="30" value="' + esc(s ? s.buttonText : 'Shop Now') + '"></div>' +
-      '<div class="field"><label for="hLink">Button goes to</label><select id="hLink"><option value="all"' + (link === 'all' ? ' selected' : '') + '>All products</option><option value="deals"' + (link === 'deals' ? ' selected' : '') + '>Deals</option>' +
+      '<div class="field"><label for="hLink">Button goes to (Deals page by default)</label><select id="hLink"><option value="deals"' + (link === 'deals' ? ' selected' : '') + '>Deals</option><option value="all"' + (link === 'all' ? ' selected' : '') + '>All products</option>' +
       Object.keys(CAT).map((c) => '<option value="cat:' + c + '"' + (link === 'cat:' + c ? ' selected' : '') + '>Category: ' + esc(CAT[c]) + '</option>').join('') + '<option value="custom"' + (isCustom ? ' selected' : '') + '>Other link...</option></select></div></div>' +
       '<div class="field" id="hCustomWrap"' + (isCustom ? '' : ' hidden') + '><label for="hCustom">Link</label><input id="hCustom" placeholder="/about.html or https://..." value="' + esc(isCustom ? link : '') + '"></div>' +
       '<fieldset><legend>Banner picture ' + (s ? '' : '*') + '</legend><div class="radios"><label><input type="radio" name="src" value="upload" checked> Upload a picture</label><label><input type="radio" name="src" value="path"> Use a file from my project (VS Code)</label></div></fieldset>' +
-      '<div class="field" id="srcUpload"><input type="file" id="hFile" accept="image/jpeg,image/png,image/webp"><span class="hint">Best: a wide picture (about 1200 × 600) with a plain or transparent background, product on the right side.</span></div>' +
+      '<div class="field" id="srcUpload"><input type="file" id="hFile" accept="image/jpeg,image/png,image/webp"><span class="hint">Use a 16:9 picture (for example 1600 × 900). It fills the right 60% of the banner exactly and fades softly into the background.</span></div>' +
       '<div class="field" id="srcPath" hidden><select id="hPath"><option value="">Choose a file...</option>' + imgFiles.map((f) => '<option value="' + esc(f) + '"' + (s && s.image === f ? ' selected' : '') + '>' + esc(f) + '</option>').join('') + '</select>' +
       '<span class="hint">Put the picture in <b>public/images/hero/</b> in VS Code, reload this window, and it appears in this list.</span></div>' +
       '<div class="bn-prev" id="hPrev"></div><label class="check"><input type="checkbox" id="hActive"' + (!s || s.active ? ' checked' : '') + '> Show this banner on the home page</label>' +
@@ -49,7 +52,7 @@ Admin.ready.then(async ({ view }) => {
 
     const prev = () => {
       const url = files[0] ? URL.createObjectURL(files[0]) : ($('input[name=src]:checked', dlg).value === 'path' && $('#hPath').value) || (s && s.image) || '';
-      $('#hPrev').innerHTML = '<div class="tx">' + ($('#hBadge').value ? '<span class="p">' + esc($('#hBadge').value) + '</span>' : '') + '<b>' + esc($('#hTitle').value || 'Title') + '</b><small>' + esc($('#hSub').value) + '</small></div>' + (url ? '<img src="' + esc(url) + '" alt="">' : '');
+      $('#hPrev').innerHTML = (url ? '<img src="' + esc(url) + '" alt="">' : '<div class="noimg"></div>') + '<div class="tx">' + ($('#hBadge').value ? '<span class="p">' + esc($('#hBadge').value) + '</span>' : '') + '<b>' + esc($('#hTitle').value || 'Title') + '</b><small>' + esc($('#hSub').value) + '</small></div>';
     };
     dlg.addEventListener('input', prev);
     dlg.addEventListener('change', (e) => {

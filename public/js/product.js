@@ -27,12 +27,14 @@ Shop.ready.then(async (cfg) => {
     '<nav class="crumbs" aria-label="Breadcrumb"><a href="/index.html">' + esc(t('nav_home')) + '</a><span>/</span><a href="/shop.html">' + esc(t('nav_shop')) + '</a><span>/</span>' +
     '<a href="' + Shop.catHref(p.category) + '">' + esc(Shop.catLabel(p.category)) + '</a><span>/</span><span aria-current="page">' + esc(p.name) + '</span></nav>' +
     '<div class="pd"><div><div class="pd-main">' + (imgs.length ? '<img id="mainImg" src="' + esc(imgs[0]) + '" alt="' + esc(p.name) + '">' : '<div class="ph-empty c-' + esc(p.category) + '" aria-hidden="true">' + Shop.CAT_ICON[p.category] + '</div>') + '</div>' +
-    (imgs.length > 1 ? '<div class="pd-thumbs">' + imgs.map((u, i) => '<button type="button" data-img="' + esc(u) + '" aria-current="' + (i === 0) + '" aria-label="' + (i + 1) + '"><img src="' + esc(u) + '" alt=""></button>').join('') + '</div>' : '') + '</div>' +
+    (imgs.length > 1 ? '<div class="pd-thumbs">' + imgs.map((u, i) => '<button type="button" data-img="' + esc(u) + '" aria-current="' + (i === 0) + '" aria-label="' + (i + 1) + '"><img src="' + esc(u) + '" alt=""></button>').join('') + '</div>' : '') +     (p.video ? '<div class="pd-video"><b>' + esc(t('product_video')) + '</b><video controls playsinline preload="metadata"' + (imgs.length ? ' poster="' + esc(imgs[0]) + '"' : '') + ' src="' + esc(p.video) + '"></video></div>' : '') +
+'</div>' +
     '<div class="pd-body"><h1>' + esc(p.name) + '</h1>' +
     '<div class="meta-row"><span class="rating" id="ratingLine">' + ratingLine() + '</span>' +
     (p.condition !== 'new' ? '<span class="chip">' + esc(t('cond_' + p.condition)) + '</span>' : '') +
     '<span class="dot' + (out ? ' out' : '') + '">' + esc(out ? t('sold') : p.stock <= 3 ? t('left', { n: p.stock }) : t('in_stock')) + '</span></div>' +
     '<div class="pd-price"><b>' + rwf(p.salePrice) + '</b>' + (p.discount ? '<s>' + rwf(p.price) + '</s><span class="disc">-' + p.discount + '%</span>' : '') + '</div>' +
+    (p.summary ? '<p class="pd-sum">' + esc(p.summary) + '</p>' : '') +
     (p.description ? '<p class="pd-desc">' + esc(p.description) + '</p>' : '') +
     (out ? '<p class="error">' + esc(t('sold_out_msg')) + '</p>' :
       '<div class="meta-row"><span>' + esc(t('qty')) + '</span><div class="stepper"><button type="button" id="dec" aria-label="-">−</button><span id="qty">1</span><button type="button" id="inc" aria-label="+">+</button></div></div>' +

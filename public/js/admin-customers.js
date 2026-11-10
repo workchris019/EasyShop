@@ -14,6 +14,6 @@ Admin.ready.then(async ({ view }) => {
           '<td>' + esc(c.district || '-') + '</td><td>' + c.orders + '</td><td>' + esc(rwf(c.spent)) + '</td><td class="muted">' + esc(date(c.last)) + '</td></tr>').join('') + '</tbody></table>'
       : '<p class="empty">No customers yet.</p>';
     $('#pager').innerHTML = pager(r.page, r.pages, r.total, LIMIT, 'customers');
-    view.addEventListener('click', (e) => { const pg = e.target.closest('[data-page]'); if (pg && !pg.disabled) location.search = '?page=' + pg.dataset.page + (st.q ? '&q=' + encodeURIComponent(st.q) : ''); });
+    view.addEventListener('click', (e) => { const pg = e.target.closest('[data-pg]'); if (pg && !pg.disabled) location.search = '?page=' + pg.dataset.pg + (st.q ? '&q=' + encodeURIComponent(st.q) : ''); });
   } catch (e) { $('#table').innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; }
 });

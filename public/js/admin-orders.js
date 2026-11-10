@@ -39,8 +39,8 @@ Admin.ready.then(async ({ view }) => {
     } catch (e) { $('#table').innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; }
   }
   view.addEventListener('click', (e) => {
-    const pg = e.target.closest('[data-page]');
-    if (pg && !pg.disabled) { go({ page: Number(pg.dataset.page) }); return; }
+    const pg = e.target.closest('[data-pg]');
+    if (pg && !pg.disabled) { go({ page: Number(pg.dataset.pg) }); return; }
     const el = e.target.closest('[data-o]');
     if (el) Admin.openOrder(rows.get(el.dataset.o), load);
   });

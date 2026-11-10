@@ -11,6 +11,8 @@ Admin.ready.then(async ({ view }) => {
   const existing = p ? p.images.slice() : [];
   const removed = [];
   const files = [];
+  let newVideo = null;
+  let removeVideo = false;
   const v = (k, d) => esc(p && p[k] !== undefined ? p[k] : d);
 
   view.innerHTML =
@@ -18,6 +20,7 @@ Admin.ready.then(async ({ view }) => {
     '<button type="submit" class="btn" id="save">' + icon('plus') + 'Save Product</button></div><div id="err" class="error" role="alert" hidden></div>' +
     '<div class="form-grid"><div class="card"><h2 class="sub-h">Product Details</h2>' +
     '<div class="field"><label for="name">Product Name *</label><input id="name" name="name" maxlength="120" required placeholder="e.g. Nike Air Zoom Pegasus 40" value="' + v('name', '') + '"></div>' +
+    '<div class="field"><label for="summary">Short details</label><input id="summary" name="summary" maxlength="90" placeholder="e.g. 128GB, Black, 1 year warranty" value="' + v('summary', '') + '"><span class="hint">Shown in small text under the price on the product card.</span></div>' +
     '<div class="field"><label for="category">Category *</label><select id="category" name="category">' + Object.keys(CAT).map((c) => '<option value="' + c + '"' + (p && p.category === c ? ' selected' : '') + '>' + esc(CAT[c]) + '</option>').join('') + '</select></div>' +
     '<fieldset><legend>Product Type *</legend><div class="radios">' + Object.keys(COND).map((c) => '<label><input type="radio" name="condition" value="' + c + '"' + ((p ? p.condition : 'new') === c ? ' checked' : '') + '> ' + esc(COND[c]) + '</label>').join('') + '</div></fieldset>' +
     '<div class="row2"><div class="field"><label for="price">Price (RWF) *</label><input id="price" name="price" type="number" min="1" step="1" inputmode="numeric" placeholder="25000" required value="' + v('price', '') + '"></div>' +
@@ -27,7 +30,8 @@ Admin.ready.then(async ({ view }) => {
     '<label class="check"><input type="checkbox" id="featured"' + (p && p.featured ? ' checked' : '') + '> Show in "Featured Products" on the home page</label></div>' +
     '<div class="card"><h2 class="sub-h">Description</h2><div class="field"><textarea id="description" name="description" rows="6" maxlength="2000" placeholder="Enter product description...">' + esc(p ? p.description : '') + '</textarea></div>' +
     '<h2 class="sub-h">Product Photos</h2><div class="drop" id="drop" tabindex="0" role="button">' + icon('upload') + '<span><b>Click to upload</b> or drag and drop</span><span class="hint">PNG, JPG or WEBP, up to 4 photos. Big photos are shrunk automatically.</span></div>' +
-    '<input type="file" id="pick" accept="image/jpeg,image/png,image/webp" multiple hidden><div class="thumbs" id="thumbs"></div></div></div></form>';
+    '<input type="file" id="pick" accept="image/jpeg,image/png,image/webp" multiple hidden><div class="thumbs" id="thumbs"></div>' +
+    '<h2 class="sub-h">Product video (optional)</h2><div class="field"><input type="file" id="vid" accept="video/mp4,video/webm"><span class="hint">A short MP4 or WebM video, up to 25 MB. Good for products that need to be shown working.</span></div><div id="vidBox"></div></div></div></form>';
 
   const price = () => {
     const pr = Number($('#price').value) || 0;
@@ -66,6 +70,35 @@ Admin.ready.then(async ({ view }) => {
   });
   thumbs();
 
+  // Product video: shows the current one (with a Remove button) or the newly chosen file.
+  let vidUrl = '';
+  function videoBox() {
+    const cur = p && p.video && !removeVideo && !newVideo ? p.video : '';
+    if (vidUrl) { URL.revokeObjectURL(vidUrl); vidUrl = ''; }
+    if (newVideo) vidUrl = URL.createObjectURL(newVideo);
+    const src = newVideo ? vidUrl : cur;
+    $('#vidBox').innerHTML = src
+      ? '<video controls playsinline preload="metadata" src="' + esc(src) + '" class="vid-prev"></video><div><button type="button" class="btn sm outline-danger" id="vidRm">' + icon('trash') + 'Remove video</button></div>'
+      : '';
+  }
+  $('#vid').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    if (!/^video\/(mp4|webm)$/.test(f.type)) { toast('The video must be an MP4 or WebM file.', true); return; }
+    if (f.size > 25 * 1024 * 1024) { toast('That video is too large. Keep it under 25 MB.', true); return; }
+    newVideo = f;
+    removeVideo = false;
+    videoBox();
+  });
+  $('#vidBox').addEventListener('click', (e) => {
+    if (!e.target.closest('#vidRm')) return;
+    newVideo = null;
+    removeVideo = true;
+    videoBox();
+  });
+  videoBox();
+
   $('#f').addEventListener('submit', async (e) => {
     e.preventDefault();
     const err = $('#err');
@@ -73,10 +106,12 @@ Admin.ready.then(async ({ view }) => {
     err.hidden = true;
     btn.disabled = true;
     const fd = new FormData();
-    ['name', 'category', 'price', 'discount', 'stock', 'description'].forEach((k) => fd.append(k, $('#' + k).value));
+    ['name', 'summary', 'category', 'price', 'discount', 'stock', 'description'].forEach((k) => fd.append(k, $('#' + k).value));
     fd.append('condition', $('input[name=condition]:checked').value);
     fd.append('featured', $('#featured').checked ? 'true' : 'false');
     files.forEach((f) => fd.append('images', f));
+    if (newVideo) fd.append('video', newVideo);
+    if (removeVideo) fd.append('removeVideo', 'true');
     if (p) fd.append('removeImages', JSON.stringify(removed));
     try {
       await api('/api/admin/products' + (p ? '/' + p._id : ''), { method: p ? 'PATCH' : 'POST', body: fd });

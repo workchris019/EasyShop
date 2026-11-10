@@ -54,8 +54,8 @@ Admin.ready.then(async ({ view }) => {
   }
 
   view.addEventListener('click', async (e) => {
-    const pg = e.target.closest('[data-page]');
-    if (pg && !pg.disabled) { go({ page: Number(pg.dataset.page) }); return; }
+    const pg = e.target.closest('[data-pg]');
+    if (pg && !pg.disabled) { go({ page: Number(pg.dataset.pg) }); return; }
     const del = e.target.closest('[data-del]');
     if (del) {
       const p = items.find((x) => x._id === del.dataset.del);

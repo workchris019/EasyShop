@@ -35,7 +35,7 @@ Shop.ready.then(async (cfg) => {
     (state.category ? '<a href="/shop.html">' + esc(t('nav_shop')) + '</a><span>/</span><span aria-current="page">' + esc(Shop.catLabel(state.category)) + '</span>' : '<span aria-current="page">' + esc(t('nav_shop')) + '</span>') + '</nav>' +
     '<div class="page-head"><h1 class="page-title">' + esc(title) + '</h1><p id="count"></p></div>' +
     '<nav class="pills" aria-label="' + esc(t('nav_categories')) + '"><a href="' + href({ category: '', page: 1 }) + '" aria-current="' + (!state.category) + '">' + esc(t('shop_all')) + '</a>' +
-    cfg.categories.map((c) => '<a href="' + href({ category: c, page: 1 }) + '" aria-current="' + (state.category === c) + '">' + Shop.CAT_ICON[c] + ' ' + esc(Shop.catLabel(c)) + '</a>').join('') + '</nav>' +
+    cfg.categories.map((c) => '<a href="' + href({ category: c, page: 1 }) + '" aria-current="' + (state.category === c) + '">' + Shop.catPic(c) + esc(Shop.catLabel(c)) + '</a>').join('') + '</nav>' +
     '<form class="toolbar" id="filters" action="/shop.html">' +
     (state.q ? '<input type="hidden" name="q" value="' + esc(state.q) + '">' : '') + (state.category ? '<input type="hidden" name="category" value="' + esc(state.category) + '">' : '') +
     '<select name="sort" aria-label="' + esc(t('sort')) + '">' +

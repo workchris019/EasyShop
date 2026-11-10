@@ -4,7 +4,7 @@ const cfg = require('../config');
 const productSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 120 },
-    category: { type: String, enum: cfg.categories, required: true },
+    category: { type: String, required: true, trim: true, lowercase: true }, // a key from Admin > Categories
     condition: { type: String, enum: cfg.conditions, default: 'new' },
     // price = normal price, discount = percent off (0-90), salePrice = what the customer pays.
     // All in whole Rwandan francs.
@@ -14,8 +14,10 @@ const productSchema = new Schema(
     },
     discount: { type: Number, default: 0, min: 0, max: 90, validate: { validator: Number.isInteger, message: 'Discount must be a whole number' } },
     salePrice: { type: Number, index: true },
+    summary: { type: String, trim: true, maxlength: 90, default: '' }, // short details shown on the product card
     description: { type: String, trim: true, maxlength: 2000, default: '' },
     images: [String],
+    video: { type: String, default: '' }, // optional short product video (/uploads/xxx.mp4)
     stock: { type: Number, min: 0, default: 1 },
     featured: { type: Boolean, default: false },
     likes: { type: Number, default: 0, min: 0 },

@@ -11,6 +11,8 @@ const bcrypt = require('bcryptjs');
 
 const Admin = require('./models/Admin');
 const { UPLOAD_DIR } = require('./middleware/upload');
+const media = require('./utils/media');
+const { seedCategories } = require('./utils/categories');
 
 for (const key of ['MONGODB_URI', 'JWT_SECRET']) {
   if (!process.env[key]) {
@@ -50,7 +52,8 @@ app.use(compression());
 app.use(express.json({ limit: '50kb' }));
 app.use(cookieParser());
 
-// Product photos never change once saved, so browsers can keep them for a long time.
+// Photos and videos live in the database (see utils/media.js). Older files still in the uploads/ folder are served as a fallback.
+app.get('/uploads/:name', media.serve);
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '30d', immutable: true }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: isProd ? '1h' : 0, index: 'index.html' }));
 
@@ -62,6 +65,7 @@ app.get(['/admin', '/admin/'], (req, res) => {
 
 app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 240, standardHeaders: true, legacyHeaders: false }));
 app.use('/api', require('./routes/public'));
+app.use('/api', require('./routes/support'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 app.use((req, res) => res.status(404).sendFile(path.join(__dirname, 'public', '404.html')));
@@ -97,6 +101,9 @@ const port = process.env.PORT || 3000;
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(seedAdmin)
+  .then(seedCategories)
+  .then(() => media.importDiskFiles(UPLOAD_DIR))
+  .then((n) => { if (n) console.log(`Copied ${n} picture(s) from the uploads folder into the database.`); })
   .then(() => app.listen(port, () => console.log(`Shop running at http://localhost:${port}  (admin: /admin/)`)))
   .catch((err) => {
     console.error('Could not start:', err.message);

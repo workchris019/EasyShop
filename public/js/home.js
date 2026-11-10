@@ -1,35 +1,33 @@
-// index.html: hero carousel (slides come from Admin > Hero banners), categories, product sections.
+// index.html: banner carousel at the top, categories with pictures, then Featured, Deals and New Arrivals.
 Shop.ready.then((cfg) => {
   const { $, $$, esc, t, icon, api } = Shop;
   Shop.setTitle(cfg.tagline);
 
-  /* ----- Hero carousel ----- */
+  /* ----- Banners (Admin > Deals banners). The button always leads to the Deals page. ----- */
   const heroHref = (link) => {
-    if (!link || link === 'all') return '/shop.html';
-    if (link === 'deals') return '/shop.html?deals=1';
+    if (!link || link === 'all' || link === 'deals') return '/shop.html?deals=1';
     if (link.indexOf('cat:') === 0) return Shop.catHref(link.slice(4));
     return link;
   };
 
+  // The picture takes the right 60% of the banner (a 16:9 picture fits exactly) and fades into the background; the text sits on the left 40% and overlaps it.
   const slideHTML = (s, i, total) =>
     '<div class="slide" role="group" aria-roledescription="slide" aria-label="' + (i + 1) + ' / ' + total + '">' +
+    '<div class="slide-img"><img src="' + esc(s.image) + '" alt="' + esc(s.title) + '"' + (i === 0 ? '' : ' loading="lazy"') + ' decoding="async"></div>' +
     '<div class="slide-text">' + (s.badge ? '<span class="pill">' + esc(s.badge) + '</span>' : '') +
     '<h2>' + esc(s.title) + '</h2>' + (s.subtitle ? '<p>' + esc(s.subtitle) + '</p>' : '') +
-    '<a class="btn" href="' + esc(heroHref(s.link)) + '">' + esc(s.buttonText || t('shop_now')) + icon('arrow') + '</a></div>' +
-    (s.image
-      ? '<div class="slide-img"><img src="' + esc(s.image) + '" alt=""' + (i === 0 ? '' : ' loading="lazy"') + ' decoding="async"></div>'
-      : '<div class="slide-img decor" aria-hidden="true">🎧 📱 👟</div>') + '</div>';
+    '<a class="btn" href="' + esc(heroHref(s.link)) + '">' + esc(s.buttonText || t('shop_now')) + icon('arrow') + '</a></div></div>';
 
-  async function initHero() {
-    let slides = [];
-    try { slides = await api('/api/hero'); } catch (e) { slides = []; }
-    if (!slides.length) slides = [{ title: t('hero_title'), subtitle: t('hero_sub'), buttonText: t('shop_now'), link: 'all', image: '' }];
+  const trustHTML = '<div class="hero-trust only-desktop"><span>' + icon('truck') + esc(t('tr_fast')) + '</span><span>' + icon('shield') + esc(t('tr_secure')) + '</span><a href="/support.html">' + icon('headset') + esc(t('tr_support')) + '</a></div>';
 
+  async function initBanners() {
     const root = $('#hero');
+    let slides = [];
+    try { slides = (await api('/api/hero')).filter((x) => x.image); } catch (e) { slides = []; }
+    if (!slides.length) { root.remove(); return; }
     const many = slides.length > 1;
     root.innerHTML =
-      '<div class="hero-track" id="track">' + slides.map((s, i) => slideHTML(s, i, slides.length)).join('') + '</div>' +
-      '<div class="hero-trust only-desktop"><span>' + icon('truck') + esc(t('tr_fast')) + '</span><span>' + icon('shield') + esc(t('tr_secure')) + '</span><span>' + icon('headset') + esc(t('tr_support')) + '</span></div>' +
+      '<div class="hero-track" id="track">' + slides.map((s, i) => slideHTML(s, i, slides.length)).join('') + '</div>' + trustHTML +
       (many
         ? '<button type="button" class="hero-arrow prev" aria-label="Previous">' + icon('left') + '</button><button type="button" class="hero-arrow next" aria-label="Next">' + icon('right') + '</button>' +
           '<div class="hero-dots">' + slides.map((s, i) => '<button type="button" aria-label="' + (i + 1) + '"></button>').join('') + '</div>'
@@ -46,9 +44,8 @@ Shop.ready.then((cfg) => {
       dots.forEach((d, n) => d.setAttribute('aria-current', String(n === index)));
     };
     const play = () => {
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       clearInterval(timer);
-      timer = setInterval(() => go(index + 1), 6000);
+      timer = setInterval(() => { if (!document.hidden) go(index + 1); }, 5000);
     };
     const stop = () => clearInterval(timer);
     $('.prev', root).addEventListener('click', () => { go(index - 1); play(); });
@@ -72,12 +69,17 @@ Shop.ready.then((cfg) => {
     play();
   }
 
-  /* ----- Categories ----- */
+  /* ----- Categories (with pictures) ----- */
   async function initCats() {
     const draw = (counts) => {
-      $('#cats').innerHTML = cfg.categories.map((c) =>
-        '<a class="tile" href="' + Shop.catHref(c) + '"><span class="ic c-' + c + '" aria-hidden="true">' + Shop.CAT_ICON[c] + '</span>' +
-        '<b>' + esc(Shop.catLabel(c)) + '</b>' + (counts[c] ? '<small>(' + counts[c] + ')</small>' : '') + '</a>').join('');
+      $('#cats').innerHTML = cfg.categories.map((c) => {
+        const it = Shop.catItem(c);
+        const inner = it && it.image
+          ? '<img src="' + esc(it.image) + '" alt="" loading="lazy" decoding="async" width="124" height="124">'
+          : esc((it && it.icon) || Shop.CAT_ICON[c] || '✨');
+        return '<a class="tile" href="' + Shop.catHref(c) + '"><span class="ic c-' + esc(c) + '" aria-hidden="true">' + inner + '</span>' +
+          '<b>' + esc(Shop.catLabel(c)) + '</b>' + (counts[c] ? '<small>(' + counts[c] + ')</small>' : '') + '</a>';
+      }).join('');
     };
     draw({});
     try { draw(await api('/api/categories')); } catch (e) { /* counts are optional */ }
@@ -93,22 +95,24 @@ Shop.ready.then((cfg) => {
   async function initSections() {
     $('#sections').innerHTML = sections.map((s) =>
       '<section class="sec" id="sec-' + s.id + '"><div class="sec-head"><h2>' + esc(t(s.title)) + '</h2>' +
-      '<a class="link" href="' + s.href + '">' + esc(t('view_all')) + ' →</a></div><div class="grid cap" id="grid-' + s.id + '">' + Shop.skeletonCards(5) + '</div></section>').join('');
+      '<a class="link" href="' + s.href + '">' + esc(t('view_all')) + ' →</a></div>' +
+      '<div class="grid cap" id="grid-' + s.id + '">' + Shop.skeletonCards(5) + '</div></section>').join('');
+
     await Promise.all(sections.map(async (s) => {
-      try {
-        const data = await api(s.url);
-        if (!data.items.length) { $('#sec-' + s.id).remove(); return; }
-        $('#grid-' + s.id).innerHTML = Shop.gridHTML(data.items);
-      } catch (e) {
-        $('#grid-' + s.id).innerHTML = '<p class="empty">' + esc(e.message) + '</p>';
-      }
+      let items = [];
+      let failed = null;
+      try { items = (await api(s.url)).items; } catch (e) { failed = e; }
+
+      if (failed) { $('#grid-' + s.id).innerHTML = '<p class="empty">' + esc(failed.message) + '</p>'; return; }
+      if (!items.length) { $('#sec-' + s.id).remove(); return; }
+      $('#grid-' + s.id).innerHTML = Shop.gridHTML(items);
     }));
     if (!$('#sections section')) {
       $('#sections').innerHTML = '<p class="empty">' + esc(t('none')) + '</p>';
     }
   }
 
-  initHero();
+  initBanners();
   initCats();
   initSections();
 });

@@ -58,3 +58,12 @@ Shop name, contact details, fees and Mobile Money codes are edited in Admin > **
 Run with `pm2 start server.js`, put Caddy or Nginx in front for HTTPS, set `NODE_ENV=production`, use MongoDB Atlas or a MongoDB on the server with backups (also back up `uploads/`), and use a strong `JWT_SECRET` and admin password.
 
 Automatic MoMo payment confirmation needs the MTN MoMo API (merchant onboarding). Today you confirm payments in the admin.
+
+## What changed in this update
+- Checkout remembers name and phone (after the customer accepts the terms card). Account icon sits in the top-right bar; `/account.html` shows the saved details.
+- Support chat (`/support.html`) with replies and announcements managed in Admin > Support.
+- Admin > Categories lets you add categories with pictures. Admin > Deals banners now feed the Deals section (16:9 picture, 70% / 30% layout).
+- Products have "Short details" (shown under the price) and an optional video (MP4/WebM, up to 25 MB).
+- Photos and videos are now stored in MongoDB, so they show on every device. On the first start, old pictures in `uploads/` are copied into the database automatically.
+- Admin fix: the page-number code was catching every click (`<body data-page>` clash), which broke Delete/Edit/View buttons.
+- Banners stay at the top of the home page (picture 60% right, fading into the background; text 40% left). The banner button opens the Deals page.

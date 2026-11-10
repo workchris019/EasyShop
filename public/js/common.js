@@ -16,6 +16,24 @@
     setJSON(k, v) { store.set(k, JSON.stringify(v)); },
   };
 
+  /* ---------- Saved account (kept on this device) and private visitor id ---------- */
+  const Account = {
+    get() { const a = store.getJSON('account', null); return a && a.name && a.phone ? a : null; },
+    save(name, phone) { store.setJSON('account', { name: String(name).trim(), phone: String(phone).trim() }); },
+    clear() { try { localStorage.removeItem('account'); } catch (e) { /* ignore */ } },
+  };
+  // A long random id that identifies this browser in support chat. Never shown to anyone.
+  function visitorId() {
+    let id = store.get('cid', '');
+    if (!/^[a-f0-9]{32}$/.test(id)) {
+      const b = new Uint8Array(16);
+      (window.crypto || window.msCrypto).getRandomValues(b);
+      id = Array.from(b, (x) => ('0' + x.toString(16)).slice(-2)).join('');
+      store.set('cid', id);
+    }
+    return id;
+  }
+
   /* ---------- Language ---------- */
   let lang = store.get('lang', 'en');
   if (!window.I18N[lang]) lang = 'en';
@@ -44,6 +62,7 @@
     whatsapp: '<path d="M21 12a9 9 0 0 1-13.5 7.8L3 21l1.3-4.4A9 9 0 1 1 21 12z"/><path d="M9 9c0 3 3 6 6 6l1.5-1.5-2-1-1 .8a4 4 0 0 1-2-2l.8-1-1-2z"/>',
     mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
     pin: '<path d="M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/>',
+    chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 11.5h7M8.5 14.5h4"/>',
     lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
     box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3.3 7.6L12 12l8.7-4.4M12 22V12"/>',
   };
@@ -156,7 +175,7 @@
   }
   const ratingHTML = (p) => p.ratingCount
     ? '<div class="rating" title="' + p.rating + ' / 5">' + stars(p.rating) + '<span>(' + p.rating.toFixed(1) + ')</span></div>'
-    : '<div class="rating"></div>';
+    : '';
   const priceHTML = (p) => '<div class="price"><b>' + rwf(p.salePrice) + '</b>' + (p.discount ? '<s>' + num(p.price) + '</s>' : '') + '</div>';
   const thumb = (p) => (p.images && p.images[0]
     ? '<img src="' + esc(p.images[0]) + '" alt="" loading="lazy" decoding="async" width="400" height="400">'
@@ -170,7 +189,7 @@
       '<button type="button" class="heart' + (on ? ' on' : '') + '" data-wish="' + esc(p._id) + '" aria-pressed="' + on + '" aria-label="' + esc(t('save')) + '">' + icon('heart') + '</button></div>' +
       '<div class="info"><h3><a class="stretch" href="/product.html?id=' + esc(p._id) + '">' + esc(p.name) + '</a></h3>' +
       (p.condition !== 'new' ? '<span class="chip">' + esc(t('cond_' + p.condition)) + '</span>' : '') +
-      ratingHTML(p) + priceHTML(p) +
+      ratingHTML(p) + priceHTML(p) + (p.summary ? '<p class="sum-line">' + esc(p.summary) + '</p>' : '') +
       (!out && p.stock <= 3 ? '<span class="low">' + esc(t('left', { n: p.stock })) + '</span>' : '') +
       '<button type="button" class="add-btn" data-add="' + esc(p._id) + '"' + (out ? ' disabled' : '') + '>' + (out ? esc(t('sold')) : icon('cart') + esc(t('add'))) + '</button></div></article>';
   }
@@ -187,7 +206,19 @@
     return inKigali ? cfg.fees.kigali : cfg.fees.upcountry;
   }
   const waLink = (text) => 'https://wa.me/' + (cfg.whatsapp || '') + '?text=' + encodeURIComponent(text);
-  const catLabel = (c) => t('cat_' + c);
+  const catItem = (c) => ((cfg && cfg.categoryList) || []).find((x) => x.key === c) || null;
+  // Default categories use the translated names; categories you add yourself use the name you typed.
+  const catLabel = (c) => {
+    const k = 'cat_' + c;
+    const tr = (window.I18N[lang] && window.I18N[lang][k]) || window.I18N.en[k];
+    const it = catItem(c);
+    return tr || (it ? it.label : c);
+  };
+  // Small round picture (or the emoji if the category has no picture) for menus and filters.
+  const catPic = (c) => {
+    const it = catItem(c);
+    return it && it.image ? '<img class="cpic" src="' + esc(it.image) + '" alt="" loading="lazy" width="22" height="22">' : '<span class="cpic">' + esc((it && it.icon) || CAT_ICON[c] || '') + '</span>';
+  };
   const catHref = (c) => '/shop.html?category=' + encodeURIComponent(c);
 
   /* ---------- Header, footer, bottom nav ---------- */
@@ -208,40 +239,40 @@
 
     $('#site-header').innerHTML =
       '<div class="topbar only-desktop"><div class="wrap"><span class="tb-left">' + icon('truck') + esc(announce) + '</span>' +
-      '<span class="tb-right"><a href="/track.html">' + icon('box') + esc(t('track_order')) + '</a><a href="/contact.html">' + icon('headset') + esc(t('support')) + '</a>' + langSelect() + '</span></div></div>' +
+      '<span class="tb-right"><a href="/support.html" class="tb-support">' + icon('headset') + esc(t('support')) + '<i class="tb-dot" id="supDot" hidden></i></a>' + langSelect() + '<a class="tb-acct" href="/account.html" aria-label="' + esc(t('account')) + '" title="' + esc(t('account')) + '">' + icon('user') + '</a></span></div></div>' +
       '<header class="site-head"><div class="wrap head-main">' + logo +
       '<div class="search-wrap"><form class="search" action="/shop.html" role="search" autocomplete="off">' +
       '<span class="s-ic">' + icon('search') + '</span><input type="search" name="q" id="hq" placeholder="' + esc(t('search_ph')) + '" aria-label="' + esc(t('search')) + '" value="' + esc(page === 'shop' ? params.get('q') || '' : '') + '">' +
       '<button class="s-btn" type="submit" aria-label="' + esc(t('search')) + '">' + icon('search') + '</button></form><div class="suggest" id="suggest" hidden></div></div>' +
-      '<div class="head-actions"><a class="hbtn only-desktop" href="/track.html">' + icon('user') + '<span class="lbl">' + esc(t('account')) + '</span></a>' +
+      '<div class="head-actions">' +
       '<a class="hbtn" href="/wishlist.html" aria-label="' + esc(t('wishlist')) + '">' + icon('heart') + '<span class="lbl">' + esc(t('wishlist')) + '</span><i class="badge" data-wish-count hidden>0</i></a>' +
       '<a class="hbtn" href="/cart.html" aria-label="' + esc(t('cart')) + '">' + icon('cart') + '<span class="lbl">' + esc(t('cart')) + '</span><i class="badge" data-cart-count hidden>0</i></a></div></div>' +
       '<nav class="main-nav only-desktop" aria-label="Main"><div class="wrap">' +
       '<a href="/index.html"' + here('home') + '>' + esc(t('nav_home')) + '</a>' +
       '<a href="/shop.html"' + (page === 'shop' && !dealsOn ? ' aria-current="page"' : '') + '>' + esc(t('nav_shop')) + '</a>' +
       '<div class="dd"><button type="button" id="ddBtn" aria-expanded="false">' + esc(t('nav_categories')) + icon('down') + '</button><div class="dd-menu" id="ddMenu" hidden>' +
-      cfg.categories.map((c) => '<a href="' + catHref(c) + '">' + (CAT_ICON[c] || '') + ' ' + esc(catLabel(c)) + '</a>').join('') + '</div></div>' +
+      cfg.categories.map((c) => '<a href="' + catHref(c) + '">' + catPic(c) + esc(catLabel(c)) + '</a>').join('') + '</div></div>' +
       '<a href="/shop.html?deals=1"' + (dealsOn ? ' aria-current="page"' : '') + '>' + esc(t('nav_deals')) + '</a>' +
       '<a href="/about.html"' + here('about') + '>' + esc(t('nav_about')) + '</a>' +
       '<a href="/contact.html"' + here('contact') + '>' + esc(t('nav_contact')) + '</a></div></nav></header>';
 
     const contact = [];
     if (cfg.phone) contact.push('<a href="tel:' + esc(cfg.phone.replace(/[^\d+]/g, '')) + '">' + icon('phone').replace('<svg', '<svg width="16" height="16"') + ' ' + esc(cfg.phone) + '</a>');
-    if (cfg.whatsapp) contact.push('<a href="https://wa.me/' + esc(cfg.whatsapp) + '" target="_blank" rel="noopener">' + esc(t('whatsapp_us')) + '</a>');
+    contact.push('<a href="/support.html">' + esc(t('support_title')) + '</a>');
     if (cfg.email) contact.push('<a href="mailto:' + esc(cfg.email) + '">' + esc(cfg.email) + '</a>');
     if (cfg.address) contact.push('<span>' + esc(cfg.address) + '</span>');
 
     $('#site-footer').innerHTML =
-      '<div class="wrap trust"><div class="trust-in"><span>' + icon('box') + esc(t('tf_track')) + '</span><span>' + icon('shield') + esc(t('tf_momo')) + '</span><span>' + icon('truck') + esc(t('tf_deliver')) + '</span><span>' + icon('headset') + esc(t('tf_support')) + '</span></div></div>' +
+      '<div class="wrap trust"><div class="trust-in"><span>' + icon('box') + esc(t('tf_track')) + '</span><span>' + icon('shield') + esc(t('tf_momo')) + '</span><span>' + icon('truck') + esc(t('tf_deliver')) + '</span><a href="/support.html">' + icon('headset') + esc(t('tf_support')) + '</a></div></div>' +
       '<footer class="site-foot"><div class="wrap"><div class="foot-grid"><div>' + logo.replace('class="logo"', 'class="logo"') + '<p class="foot-about">' + esc(cfg.about || t('about_text', { shop: shopName })) + '</p></div>' +
-      '<div><h4>' + esc(t('quick_links')) + '</h4><a href="/index.html">' + esc(t('nav_home')) + '</a><a href="/shop.html">' + esc(t('nav_shop')) + '</a><a href="/shop.html?deals=1">' + esc(t('nav_deals')) + '</a><a href="/track.html">' + esc(t('track_order')) + '</a><a href="/about.html">' + esc(t('nav_about')) + '</a></div>' +
+      '<div><h4>' + esc(t('quick_links')) + '</h4><a href="/index.html">' + esc(t('nav_home')) + '</a><a href="/shop.html">' + esc(t('nav_shop')) + '</a><a href="/shop.html?deals=1">' + esc(t('nav_deals')) + '</a><a href="/track.html">' + esc(t('track_order')) + '</a><a href="/support.html">' + esc(t('support')) + '</a><a href="/about.html">' + esc(t('nav_about')) + '</a></div>' +
       '<div><h4>' + esc(t('nav_categories')) + '</h4>' + cfg.categories.slice(0, 5).map((c) => '<a href="' + catHref(c) + '">' + esc(catLabel(c)) + '</a>').join('') + '</div>' +
       '<div><h4>' + esc(t('contact_title')) + '</h4>' + (contact.join('') || '<a href="/contact.html">' + esc(t('nav_contact')) + '</a>') + '</div></div>' +
       '<div class="foot-bottom"><span>© ' + new Date().getFullYear() + ' ' + esc(shopName) + '. ' + esc(t('foot_note')) + '</span>' + langSelect() + '</div></div></footer>' +
       '<nav class="bottom-nav only-mobile" aria-label="Mobile"><a href="/index.html"' + here('home') + '>' + icon('home') + esc(t('bn_home')) + '</a>' +
       '<a href="/index.html#categories">' + icon('grid') + esc(t('bn_cats')) + '</a>' +
       '<a href="/wishlist.html"' + here('wishlist') + '>' + icon('heart') + esc(t('bn_wish')) + '</a>' +
-      '<a href="/track.html"' + here('track') + '>' + icon('user') + esc(t('bn_account')) + '</a></nav>';
+      '<a href="/account.html"' + here('account') + '>' + icon('user') + esc(t('bn_account')) + '</a></nav>';
 
     $$('.lang-select').forEach((s) => { s.value = lang; s.addEventListener('change', () => { store.set('lang', s.value); location.reload(); }); });
     badges();
@@ -289,6 +320,41 @@
     input.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
   }
 
+  /* ---------- Messages from the admin (to everyone or to this customer) ---------- */
+  async function loadNotices() {
+    try {
+      const acc = Account.get();
+      const list = await api('/api/announcements?cid=' + visitorId() + (acc ? '&phone=' + encodeURIComponent(acc.phone) : ''));
+      const closed = store.getJSON('noticesClosed', []);
+      const show = list.filter((a) => closed.indexOf(a.id) === -1);
+      if (!show.length) return;
+      const box = document.createElement('div');
+      box.className = 'notices';
+      box.innerHTML = show.map((a) => '<div class="notice' + (a.personal ? ' personal' : '') + '" role="status"><div class="wrap"><span>' +
+        (a.personal ? '<b>' + esc(t('notice_personal')) + ':</b> ' : '') + esc(a.text) + '</span>' +
+        '<button type="button" data-close-notice="' + esc(a.id) + '" aria-label="' + esc(t('notice_close')) + '">×</button></div></div>').join('');
+      const head = $('#site-header');
+      head.parentNode.insertBefore(box, head.nextSibling);
+      box.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-close-notice]');
+        if (!b) return;
+        closed.push(b.dataset.closeNotice);
+        store.setJSON('noticesClosed', closed.slice(-50));
+        b.closest('.notice').remove();
+      });
+    } catch (e) { /* notices are optional */ }
+  }
+
+  // Red dot on "Support" when the admin has replied and the customer has not read it yet.
+  async function checkSupportBadge() {
+    if (document.body.dataset.page === 'support' || !store.get('cid', '')) return;
+    try {
+      const d = await api('/api/support/thread?cid=' + visitorId());
+      const dot = $('#supDot');
+      if (dot) dot.hidden = !d.unread;
+    } catch (e) { /* optional */ }
+  }
+
   /* ---------- Global clicks: add to cart, save to wishlist ---------- */
   document.addEventListener('click', async (e) => {
     const w = e.target.closest('[data-wish]');
@@ -309,7 +375,10 @@
       if (app) app.innerHTML = '<p class="empty">' + esc(err.message) + '</p>';
       throw err;
     }
+    (cfg.categoryList || []).forEach((c) => { CAT_ICON[c.key] = c.icon || CAT_ICON[c.key] || '✨'; });
     renderChrome();
+    loadNotices();
+    checkSupportBadge();
     return cfg;
   })();
 
@@ -318,7 +387,7 @@
   window.Shop = {
     $, $$, esc, num, rwf, store, t, icon, api, toast, ready, setTitle,
     Cart, Wish, cache, remember, getProduct, productCard, gridHTML, skeletonCards, stars, ratingHTML, priceHTML, thumb,
-    deliveryFee, waLink, catLabel, catHref, CAT_ICON,
+    deliveryFee, waLink, catLabel, catHref, catPic, catItem, CAT_ICON, Account, visitorId,
     get cfg() { return cfg; },
     get lang() { return lang; },
   };
