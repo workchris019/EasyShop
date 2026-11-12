@@ -32,15 +32,15 @@ Admin.ready.then(async ({ view }) => {
       $('#table').innerHTML = r.items.length
         ? '<table><thead><tr><th>Order #</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Date</th><th></th></tr></thead><tbody>' +
           r.items.map((o) => '<tr class="click" data-o="' + esc(o._id) + '"><td><b>' + esc(o.ref) + '</b></td><td>' + esc(o.customer.name) + '<br><span class="muted">+' + esc(o.customer.phone) + '</span></td>' +
-            '<td>' + o.items.reduce((s, i) => s + i.qty, 0) + '</td><td><b>' + esc(rwf(o.total)) + '</b></td><td>' + esc(PAY[o.payment.method] || '') + '</td><td>' + pill(o.status) + '</td><td class="muted">' + esc(date(o.createdAt)) + '</td>' +
+            '<td>' + o.items.reduce((s, i) => s + i.qty, 0) + '</td><td><b>' + esc(rwf(o.total)) + '</b></td><td>' + esc((PAY[o.payment.method] || '') + (o.payment.status && o.payment.status !== 'none' ? ' (' + o.payment.status + ')' : '')) + '</td><td>' + pill(o.status) + '</td><td class="muted">' + esc(date(o.createdAt)) + '</td>' +
             '<td><button type="button" class="btn sm ghost" data-o="' + esc(o._id) + '">View</button></td></tr>').join('') + '</tbody></table>'
         : '<p class="empty">No orders found.</p>';
       $('#pager').innerHTML = pager(r.page, r.pages, r.total, LIMIT, 'orders');
     } catch (e) { $('#table').innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; }
   }
   view.addEventListener('click', (e) => {
-    const pg = e.target.closest('[data-pg]');
-    if (pg && !pg.disabled) { go({ page: Number(pg.dataset.pg) }); return; }
+    const pg = e.target.closest('[data-page]');
+    if (pg && !pg.disabled) { go({ page: Number(pg.dataset.page) }); return; }
     const el = e.target.closest('[data-o]');
     if (el) Admin.openOrder(rows.get(el.dataset.o), load);
   });

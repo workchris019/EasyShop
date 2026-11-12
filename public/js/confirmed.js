@@ -6,7 +6,7 @@ Shop.ready.then((cfg) => {
   if (!o) { location.replace('/index.html'); return; }
   Shop.setTitle(t('done_title'));
 
-  const payName = { mtn: 'MTN MoMo', airtel: 'Airtel Money', cod: 'Pay on delivery', online: 'Online payment' }[o.payment.method];
+  const payName = { mtn: 'MTN MoMo', airtel: 'Airtel Money', cod: 'Pay on delivery', easypay: 'Mobile Money (EasyPay)' }[o.payment.method];
   const lines = [
     cfg.shopName + ' order ' + o.ref,
     ...o.items.map((i) => i.qty + ' x ' + i.name + ' - ' + rwf(i.price * i.qty)),
@@ -19,7 +19,9 @@ Shop.ready.then((cfg) => {
   ];
 
   let pay = '';
-  if (o.payment.method === 'mtn' || o.payment.method === 'airtel') {
+  if (o.payment.method === 'easypay') {
+    pay = '<div class="pay-box" id="payState">' + esc(t('pay_wait')) + '</div>';
+  } else if (o.payment.method !== 'cod') {
     const info = cfg.payments[o.payment.method];
     pay = '<div class="pay-box">' + esc(info.code ? t('pay_to', { total: rwf(o.total), name: info.name || payName, code: info.code }) : t('pay_later')) + '</div>';
   }
@@ -31,4 +33,21 @@ Shop.ready.then((cfg) => {
     '<div class="stack">' + (cfg.whatsapp ? '<a class="btn wa block" target="_blank" rel="noopener" href="' + esc(Shop.waLink(lines.join('\n'))) + '">' + icon('whatsapp') + esc(t('wa_btn')) + '</a>' : '') +
     '<a class="btn block" href="/track.html?ref=' + encodeURIComponent(o.ref) + '&phone=' + encodeURIComponent(o.customer.phone) + '">' + esc(t('track_order')) + '</a>' +
     '<a class="btn ghost block" href="/shop.html">' + esc(t('continue')) + '</a></div></div>';
+
+  // EasyPay: wait for the payment to be confirmed (the page updates by itself).
+  if (o.payment.method === 'easypay') {
+    const state = $('#payState');
+    let tries = 0;
+    const finish = (key) => { state.textContent = t(key); };
+    const check = async () => {
+      try {
+        const r = await Shop.api('/api/orders/payment-status?ref=' + encodeURIComponent(o.ref) + '&phone=' + encodeURIComponent(o.customer.phone));
+        if (r.paymentStatus === 'paid') { Shop.Cart.clear(); return finish('pay_ok'); }
+        if (r.paymentStatus === 'failed') return finish('pay_failed');
+      } catch (e) { /* keep trying */ }
+      if (++tries >= 40) return finish('pay_slow');
+      setTimeout(check, 4000);
+    };
+    check();
+  }
 });

@@ -7,12 +7,12 @@ const cfg = require('../config');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const Hero = require('../models/Hero');
-const { getCategories, categoryKeys } = require('../utils/categories');
 const { getSettings } = require('../utils/settings');
 const { shapeProduct } = require('../utils/shape');
 const { rx } = require('../utils/text');
 const { normalizePhone } = require('../utils/phone');
 const { wrap, httpError } = require('../utils/http');
+const easypay = require('../utils/easypay');
 
 const router = express.Router();
 const limiter = (max, windowMs, message) =>
@@ -21,19 +21,17 @@ const limiter = (max, windowMs, message) =>
 /* ---------- Shop settings (safe to expose) ---------- */
 router.get('/config', wrap(async (req, res) => {
   const s = await getSettings();
-  const cats = await getCategories();
   res.json({
     shopName: s.shopName, tagline: s.tagline, about: s.about, announcement: s.announcement,
     address: s.address, email: s.email, phone: s.phone, whatsapp: s.whatsapp,
     freeDeliveryOver: s.freeDeliveryOver,
-    categories: cats.map((c) => c.key),
-    categoryList: cats.map((c) => ({ key: c.key, label: c.label, icon: c.icon, image: c.image })),
-    conditions: cfg.conditions, orderStatuses: cfg.orderStatuses,
+    categories: cfg.categories, conditions: cfg.conditions, orderStatuses: cfg.orderStatuses,
     kigali: cfg.kigaliDistricts, upcountry: cfg.upcountryDistricts,
     fees: { kigali: s.feeKigali, upcountry: s.feeUpcountry },
     payments: {
       mtn: { code: s.mtnCode, name: s.mtnName },
       airtel: { code: s.airtelCode, name: s.airtelName },
+      easypay: { enabled: easypay.enabled() },
     },
   });
 }));
@@ -69,7 +67,7 @@ router.get('/products', wrap(async (req, res) => {
   }
 
   const filter = {};
-  if (typeof q.category === 'string' && (await categoryKeys()).includes(q.category)) filter.category = q.category;
+  if (typeof q.category === 'string' && cfg.categories.includes(q.category)) filter.category = q.category;
   if (typeof q.condition === 'string' && cfg.conditions.includes(q.condition)) filter.condition = q.condition;
   if (q.deals === '1') filter.discount = { $gt: 0 };
   if (q.featured === '1') filter.featured = true;
@@ -156,6 +154,8 @@ router.post('/orders',
       throw httpError(400, 'Pay on delivery is only available in Kigali. Please pay with Mobile Money.');
     }
 
+    if (method === 'easypay' && !easypay.enabled()) throw httpError(400, 'Choose how you will pay.');
+
     // Merge duplicate lines and validate quantities.
     const qtyById = new Map();
     for (const it of items) {
@@ -204,17 +204,47 @@ router.post('/orders',
         subtotal, deliveryFee, total: subtotal + deliveryFee,
       });
 
+      // Pay with EasyPay: ask EasyPay for a checkout page and send the customer there.
+      let checkoutUrl;
+      if (method === 'easypay') {
+        try {
+          const pay = await easypay.createPayment(order);
+          order.payment.easypayId = pay.id;
+          order.payment.status = 'pending';
+          await order.save();
+          checkoutUrl = pay.checkoutUrl;
+        } catch (e) {
+          console.error('EasyPay:', e.message);
+          await Order.deleteOne({ _id: order._id });
+          throw httpError(502, 'Mobile Money checkout is not available right now. Please try again, or choose another way to pay.');
+        }
+      }
+
       res.status(201).json({
         ref: order.ref,
         items: lines.map(({ name: n, price, qty }) => ({ name: n, price, qty })),
-        customer: order.customer, deliveryMethod, payment: order.payment,
-        subtotal, deliveryFee, total: order.total,
+        customer: order.customer, deliveryMethod,
+        payment: { method: order.payment.method, reference: order.payment.reference, status: order.payment.status },
+        subtotal, deliveryFee, total: order.total, checkoutUrl,
       });
     } catch (err) {
       // Put reserved stock back if anything failed.
       for (const r of reserved) await Product.updateOne({ _id: r.id }, { $inc: { stock: r.qty } }).catch(() => {});
       throw err;
     }
+  }));
+
+// The thank-you page asks this while a customer's EasyPay payment is being confirmed.
+// It also asks EasyPay directly, so the order updates even if a webhook was missed.
+router.get('/orders/payment-status',
+  limiter(200, 15 * 60 * 1000, 'Too many requests. Please wait a few minutes.'),
+  wrap(async (req, res) => {
+    const ref = String(req.query.ref || '').trim().toUpperCase();
+    const phone = normalizePhone(req.query.phone);
+    let o = ref && phone && (await Order.findOne({ ref, 'customer.phone': phone }));
+    if (!o) throw httpError(404, 'Order not found.');
+    o = await easypay.syncPayment(o);
+    res.json({ paymentStatus: o.payment.status, status: o.status });
   }));
 
 // Customers check where their order is with order number + phone number.

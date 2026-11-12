@@ -14,12 +14,11 @@ const upcountry = [
 ];
 
 module.exports = {
-  // Starting categories. After the first start they live in the database and are edited in Admin > Categories.
   categories: ['phones', 'electronics', 'clothes', 'shoes', 'home', 'beauty', 'baby', 'other'],
   conditions: ['new', 'like-new', 'used'],
   kigaliDistricts: kigali,
   upcountryDistricts: upcountry,
   districts: [...kigali, ...upcountry],
-  paymentMethods: ['mtn', 'airtel', 'cod', 'online'],
+  paymentMethods: ['easypay', 'mtn', 'airtel', 'cod'],
   orderStatuses: ['new', 'confirmed', 'shipped', 'delivered', 'cancelled'],
 };
