@@ -99,7 +99,7 @@ async function seedAdmin() {
   console.log(`Admin account "${username}" created. You can now remove ADMIN_PASSWORD from .env.`);
 }
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 5000;
 
 mongoose
   .connect(process.env.MONGODB_URI)
