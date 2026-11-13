@@ -4,7 +4,10 @@ const crypto = require('crypto');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 
-const baseUrl = () => String(process.env.EASYPAY_URL || '').replace(/\/$/, '');
+const baseUrl = () => {
+  const u = String(process.env.EASYPAY_URL || '').trim().replace(/\/$/, '');
+  return u && !/^https?:\/\//i.test(u) ? 'https://' + u : u;
+};
 const siteUrl = () => String(process.env.SITE_URL || '').replace(/\/$/, '');
 
 // The EasyPay option only appears at checkout when these are set.
@@ -14,7 +17,7 @@ async function call(path, options = {}) {
   const res = await fetch(baseUrl() + path, {
     ...options,
     headers: { 'x-api-key': process.env.EASYPAY_API_KEY, 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(60000),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`EasyPay ${res.status}: ${data.error || 'request failed'}`);

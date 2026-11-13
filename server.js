@@ -112,6 +112,7 @@ mongoose
   .then((n) => { if (n) console.log(`Copied ${n} picture(s) from the uploads folder into the database.`); })
   .then(() => app.listen(port, () => {
     console.log(`Shop running at http://localhost:${port}  (admin: /admin/)`);
+    console.log('EasyPay:', easypay.enabled() ? 'ON' : 'OFF (check EASYPAY_URL, EASYPAY_API_KEY, SITE_URL)');
     if (easypay.enabled()) {
       // Cancels orders whose EasyPay payment expired or failed, and puts the stock back.
       setInterval(() => easypay.sweep().catch((e) => console.error('EasyPay sweep:', e.message)), 5 * 60 * 1000).unref();
