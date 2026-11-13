@@ -25,6 +25,9 @@ const orderSchema = new Schema(
     payment: {
       method: { type: String, enum: cfg.paymentMethods, required: true },
       reference: { type: String, default: '' },
+      // Only used when the order is paid through EasyPay. 'none' for every other order.
+      status: { type: String, enum: ['none', 'pending', 'paid', 'failed'], default: 'none' },
+      easypayId: { type: String, default: '' },
     },
     driver: { name: String, phone: String },
     subtotal: Number,
