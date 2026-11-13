@@ -6,7 +6,7 @@ Shop.ready.then((cfg) => {
   if (!o) { location.replace('/index.html'); return; }
   Shop.setTitle(t('done_title'));
 
-  const payName = { mtn: 'MTN MoMo', airtel: 'Airtel Money', cod: 'Pay on delivery', easypay: 'Mobile Money (EasyPay)' }[o.payment.method];
+  const payName = { mtn: 'MTN MoMo', airtel: 'Airtel Money', cod: 'Pay on delivery', online: 'Online payment' }[o.payment.method];
   const lines = [
     cfg.shopName + ' order ' + o.ref,
     ...o.items.map((i) => i.qty + ' x ' + i.name + ' - ' + rwf(i.price * i.qty)),
@@ -19,9 +19,9 @@ Shop.ready.then((cfg) => {
   ];
 
   let pay = '';
-  if (o.payment.method === 'easypay') {
+  if (o.payment.status === 'pending') {
     pay = '<div class="pay-box" id="payState">' + esc(t('pay_wait')) + '</div>';
-  } else if (o.payment.method !== 'cod') {
+  } else if (o.payment.method === 'mtn' || o.payment.method === 'airtel') {
     const info = cfg.payments[o.payment.method];
     pay = '<div class="pay-box">' + esc(info.code ? t('pay_to', { total: rwf(o.total), name: info.name || payName, code: info.code }) : t('pay_later')) + '</div>';
   }
@@ -35,7 +35,7 @@ Shop.ready.then((cfg) => {
     '<a class="btn ghost block" href="/shop.html">' + esc(t('continue')) + '</a></div></div>';
 
   // EasyPay: wait for the payment to be confirmed (the page updates by itself).
-  if (o.payment.method === 'easypay') {
+  if (o.payment.status === 'pending') {
     const state = $('#payState');
     let tries = 0;
     const finish = (key) => { state.textContent = t(key); };

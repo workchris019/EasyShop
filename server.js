@@ -11,6 +11,8 @@ const bcrypt = require('bcryptjs');
 
 const Admin = require('./models/Admin');
 const { UPLOAD_DIR } = require('./middleware/upload');
+const media = require('./utils/media');
+const { seedCategories } = require('./utils/categories');
 const easypay = require('./utils/easypay');
 const { wrap } = require('./utils/http');
 
@@ -49,7 +51,6 @@ app.use(
 
 // Gzip every text response. Smaller pages mean cheaper, faster browsing on mobile data.
 app.use(compression());
-
 // EasyPay tells us when a payment finishes. This route needs the raw body to check the
 // signature, so it must stay ABOVE express.json().
 app.post('/webhooks/easypay', express.raw({ type: 'application/json', limit: '20kb' }), wrap(easypay.webhook));
@@ -57,7 +58,8 @@ app.post('/webhooks/easypay', express.raw({ type: 'application/json', limit: '20
 app.use(express.json({ limit: '50kb' }));
 app.use(cookieParser());
 
-// Product photos never change once saved, so browsers can keep them for a long time.
+// Photos and videos live in the database (see utils/media.js). Older files still in the uploads/ folder are served as a fallback.
+app.get('/uploads/:name', media.serve);
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '30d', immutable: true }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: isProd ? '1h' : 0, index: 'index.html' }));
 
@@ -69,6 +71,7 @@ app.get(['/admin', '/admin/'], (req, res) => {
 
 app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 240, standardHeaders: true, legacyHeaders: false }));
 app.use('/api', require('./routes/public'));
+app.use('/api', require('./routes/support'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 app.use((req, res) => res.status(404).sendFile(path.join(__dirname, 'public', '404.html')));
@@ -99,11 +102,14 @@ async function seedAdmin() {
   console.log(`Admin account "${username}" created. You can now remove ADMIN_PASSWORD from .env.`);
 }
 
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 3000;
 
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(seedAdmin)
+  .then(seedCategories)
+  .then(() => media.importDiskFiles(UPLOAD_DIR))
+  .then((n) => { if (n) console.log(`Copied ${n} picture(s) from the uploads folder into the database.`); })
   .then(() => app.listen(port, () => {
     console.log(`Shop running at http://localhost:${port}  (admin: /admin/)`);
     if (easypay.enabled()) {

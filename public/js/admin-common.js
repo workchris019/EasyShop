@@ -30,6 +30,8 @@
     trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>',
     upload: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
     x: '<path d="M18 6L6 18M6 6l12 12"/>',
+    chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 11.5h7M8.5 14.5h4"/>',
+    tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>',
     calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   };
   const icon = (n) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + P[n] + '</svg>';
@@ -37,11 +39,11 @@
 
   const STATUS = { new: 'New', confirmed: 'Processing', shipped: 'On the way', delivered: 'Delivered', cancelled: 'Cancelled' };
   const pill = (s) => '<span class="pill p-' + esc(s) + '">' + esc(STATUS[s] || s) + '</span>';
-  const PAY = { easypay: 'MoMo (EasyPay)', mtn: 'MTN MoMo', airtel: 'Airtel Money', cod: 'Pay on delivery' };
+  const PAY = { mtn: 'MTN MoMo', airtel: 'Airtel Money', cod: 'Pay on delivery', online: 'Online payment' };
   const PAYSTATE = (o) => (o.payment && o.payment.status && o.payment.status !== 'none' ? ' (' + o.payment.status + ')' : '');
   const COND = { new: 'New', 'like-new': 'Like new', used: 'Used' };
-  const CAT = { phones: 'Phones', electronics: 'Electronics', clothes: 'Clothes', shoes: 'Shoes', home: 'Home & Kitchen', beauty: 'Beauty', baby: 'Baby & Kids', other: 'Other' };
-  const CAT_ICON = { phones: '📱', electronics: '🎧', clothes: '👕', shoes: '👟', home: '🏠', beauty: '💄', baby: '🧸', other: '✨' };
+  const CAT = {}; // filled from Admin > Categories when the page starts
+  const CAT_ICON = {};
   const thumb = (img, cat) => '<span class="thumb">' + (img ? '<img src="' + esc(img) + '" alt="" loading="lazy">' : (CAT_ICON[cat] || '🛍️')) + '</span>';
 
   let toastTimer;
@@ -67,21 +69,21 @@
   }
   const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-  // "Showing 1 to 10 of 24 items" plus page buttons. The page script listens for clicks on [data-page].
+  // "Showing 1 to 10 of 24 items" plus page buttons. The page script listens for clicks on [data-pg]. (Not data-page: <body> already uses that name.)
   function pager(page, pages, total, limit, noun) {
     if (!total) return '';
     const from = (page - 1) * limit + 1;
     const to = Math.min(total, page * limit);
     const nums = [];
     for (let i = 1; i <= pages; i++) if (i === 1 || i === pages || Math.abs(i - page) <= 1) nums.push(i);
-    let btns = '<button type="button" data-page="' + (page - 1) + '"' + (page <= 1 ? ' disabled' : '') + ' aria-label="Previous">‹</button>';
+    let btns = '<button type="button" data-pg="' + (page - 1) + '"' + (page <= 1 ? ' disabled' : '') + ' aria-label="Previous">‹</button>';
     let last = 0;
     nums.forEach((n) => {
       if (n - last > 1) btns += '<button type="button" disabled>…</button>';
-      btns += '<button type="button" data-page="' + n + '"' + (n === page ? ' aria-current="page"' : '') + '>' + n + '</button>';
+      btns += '<button type="button" data-pg="' + n + '"' + (n === page ? ' aria-current="page"' : '') + '>' + n + '</button>';
       last = n;
     });
-    btns += '<button type="button" data-page="' + (page + 1) + '"' + (page >= pages ? ' disabled' : '') + ' aria-label="Next">›</button>';
+    btns += '<button type="button" data-pg="' + (page + 1) + '"' + (page >= pages ? ' disabled' : '') + ' aria-label="Next">›</button>';
     return '<div class="pager"><span>Showing ' + from + ' to ' + to + ' of ' + total + ' ' + noun + '</span><div class="pgs">' + btns + '</div></div>';
   }
 
@@ -139,11 +141,12 @@
   const NAV = [
     ['dashboard', '/admin.html', 'Dashboard', 'dashboard'], ['products', '/admin-products.html', 'Products', 'box'], ['orders', '/admin-orders.html', 'Orders', 'cart'],
     ['deliveries', '/admin-deliveries.html', 'Deliveries', 'truck'], ['customers', '/admin-customers.html', 'Customers', 'users'],
-    ['hero', '/admin-hero.html', 'Hero banners', 'image'], ['reports', '/admin-reports.html', 'Reports', 'chart'], ['settings', '/admin-settings.html', 'Settings', 'settings'],
+    ['support', '/admin-support.html', 'Support', 'chat'], ['categories', '/admin-categories.html', 'Categories', 'tag'],
+    ['hero', '/admin-hero.html', 'Home banners', 'image'], ['reports', '/admin-reports.html', 'Reports', 'chart'], ['settings', '/admin-settings.html', 'Settings', 'settings'],
   ];
 
   function renderShell(me, stats) {
-    const nb = { orders: stats && stats.newOrders, deliveries: stats && stats.activeDeliveries };
+    const nb = { orders: stats && stats.newOrders, deliveries: stats && stats.activeDeliveries, support: stats && stats.unreadSupport };
     $('#shell').innerHTML =
       '<div class="shell"><aside class="side" id="side"><div class="brand">' + LOGO + '<b>ShopEasy<small>Admin</small></b></div>' +
       '<nav class="nav" aria-label="Admin">' + NAV.map((n) => '<a href="' + n[1] + '"' + (page === n[0] ? ' aria-current="page"' : '') + '>' + icon(n[3]) + n[2] + (nb[n[0]] ? '<span class="nb">' + nb[n[0]] + '</span>' : '') + '</a>').join('') + '</nav>' +
@@ -151,7 +154,7 @@
       '<div class="main-col"><header class="top"><button type="button" class="icon-btn menu-btn" id="menuBtn" aria-label="Menu">' + icon('menu') + '</button>' +
       '<form class="gsearch" id="gsearch" role="search">' + icon('search') + '<input type="search" id="gq" placeholder="Search orders, products, customers..." aria-label="Search"></form>' +
       '<div class="top-right"><a class="icon-btn" href="/admin-orders.html?status=new" aria-label="New orders">' + icon('bell') + (stats && stats.newOrders ? '<span class="dot-badge">' + stats.newOrders + '</span>' : '') + '</a>' +
-      '<div class="me"><span class="avatar">' + esc(me.username.charAt(0)) + '</span><div><b>' + esc(me.username) + '</b><small>Store admin</small></div></div></div></header>' +
+      '<div class="me"><span class="avatar">' + esc(me.username.charAt(0)) + '</span><div><b>' + esc(me.username) + '</b><small>Store admin</small></div></div><button type="button" class="btn sm ghost top-logout" id="logout2" aria-label="Logout">' + icon('logout') + '<span>Logout</span></button></div></header>' +
       '<main id="view"></main></div></div>';
 
     const side = $('#side');
@@ -164,7 +167,9 @@
       scrim.addEventListener('click', close);
       document.body.appendChild(scrim);
     });
-    $('#logout').addEventListener('click', async () => { await api('/api/admin/logout', { method: 'POST' }).catch(() => {}); location.href = '/admin-login.html'; });
+    const signOut = async () => { await api('/api/admin/logout', { method: 'POST' }).catch(() => {}); location.href = '/admin-login.html'; };
+    $('#logout').addEventListener('click', signOut);
+    $('#logout2').addEventListener('click', signOut);
     $('#gsearch').addEventListener('submit', (e) => {
       e.preventDefault();
       const v = $('#gq').value.trim();
@@ -180,6 +185,8 @@
     if (page === 'login') return {};
     const me = await api('/api/admin/me');
     const stats = await api('/api/admin/stats').catch(() => null);
+    const cats = await api('/api/admin/categories').catch(() => []);
+    cats.forEach((c) => { CAT[c.key] = c.label; CAT_ICON[c.key] = c.icon || '🛍️'; });
     renderShell(me, stats);
     let msg = null;
     try { msg = sessionStorage.getItem('adminFlash'); sessionStorage.removeItem('adminFlash'); } catch (e) { /* ignore */ }

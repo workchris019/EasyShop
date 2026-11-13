@@ -60,7 +60,7 @@ async function applyStatus(ref, easypayId, status) {
 
 // Asks EasyPay where a pending payment stands and updates the order.
 async function syncPayment(order) {
-  if (order.payment.method !== 'easypay' || order.payment.status !== 'pending' || !order.payment.easypayId) return order;
+  if (order.payment.status !== 'pending' || !order.payment.easypayId) return order;
   try {
     const p = await call(`/v1/payments/${encodeURIComponent(order.payment.easypayId)}`);
     await applyStatus(order.ref, order.payment.easypayId, p.status);
@@ -73,7 +73,7 @@ async function syncPayment(order) {
 // Runs every few minutes: settles orders whose customer never finished paying.
 async function sweep() {
   const old = new Date(Date.now() - 3 * 60 * 1000);
-  const orders = await Order.find({ 'payment.method': 'easypay', 'payment.status': 'pending', createdAt: { $lt: old } }).limit(50);
+  const orders = await Order.find({ 'payment.status': 'pending', createdAt: { $lt: old } }).limit(50);
   for (const o of orders) await syncPayment(o);
 }
 
